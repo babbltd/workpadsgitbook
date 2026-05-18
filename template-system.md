@@ -341,3 +341,57 @@ For template authors shipping a page that carries a Workpads template:
 | 2 | Page ingestion — scanner active in in-app browser, consent banner UI | Planned |
 | 3 | Gallery index format, `<link rel="workpads-gallery">`, Discover tab in Management | Planned |
 | 4 | Schema B wired to record share, Schema P wired to note presentations, component resolution (C) | Planned |
+
+---
+
+## Wire Encoding Extensions (SUI-006)
+
+**Status:** v1.1 — 2026-05-18  
+**Kaios source:** `draft_specs/TEMPLATE-SYSTEM-DESIGN.md`
+
+### Extended Template Object Fields
+
+Templates may carry formula and FLAGS4 extension fields alongside the standard manifest fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `label_map` | object | `{ field_key: "Display Label" }` — overrides default labels for field_flags slots |
+| `formula` | string | Infix formula string for computed fields (e.g. `"qty * rate"`) |
+| `formula_bytecode` | string | RPN bytecode for the formula (base64url-encoded), carried in TRIG block |
+| `block_order` | string[] | Override field display order (list of field_keys in desired render order) |
+| `custom_fields` | object[] | FLAGS4 slot allocations for template-specific fields (see below) |
+| `template_hash` | string | Canonical SHA-256 of the template content (hex), used for template-keyed encryption |
+
+### custom_fields array
+
+Each entry in `custom_fields` allocates a FLAGS4 bit:
+
+```json
+{
+  "bit": 3,
+  "key": "warranty_expiry",
+  "label": "Warranty expires",
+  "type": "date",
+  "encoding": "uint16_days"
+}
+```
+
+`bit`: FLAGS4 bit (0–6) allocated to this field.  
+`type`: `"date"`, `"text"`, `"uint8"`, `"uint16"`, `"uint24"`.  
+`encoding`: overrides default for the type (e.g. `"uint16_days"` for compact date fields).
+
+### Custom Template ID (EXT_TEMPLATE Variant Type)
+
+For community templates that need a wire-level ID without central registration, use the EXT_TEMPLATE variant type (EXT_SIGNAL=100 in meta1 bits 5-3):
+
+```
+3 bytes:
+  byte 1: uint8  = CRC-8 of creator identity hash (256 namespace slots)
+  bytes 2-3: uint16 = CRC-16 of (identity + template name + creation date)
+```
+
+Collision probability: ~1 in 16M across all namespaces. For built-in templates, use the BASE_TEMPLATE 3-bit codes (no extension bytes needed).
+
+### Formula Encoding
+
+When a template includes computed fields, the formula is encoded in the TRIG block using RPN bytecode. The `formula` string in the template object is for human readability and authoring tools only — the wire format uses `formula_bytecode`. Both must be present for the encoder to validate consistency.

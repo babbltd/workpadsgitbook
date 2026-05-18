@@ -141,3 +141,36 @@ New templates must:
 4. Be documented in this standard before use
 
 The `svc-basic` template occupies template byte `0x01`. Future templates start at `0x02`.
+
+---
+
+## FLAGS4 Standard Cross-Template Assignments (SUI-020)
+
+**Status:** v1.1 addition — 2026-05-18  
+**Kaios source:** `dev_refs/FRAME-SPEC.md` §14
+
+FLAGS4 is a template-defined byte (FLAGS3 bit 7 = FLAGS4_PRESENT signals its presence). Bits 0–1 and 4–7 are allocated per-template via `custom_fields` in the template definition. Two bits are reserved as **standard cross-template assignments** — their meaning is the same in every template that uses them:
+
+| Bit | Name | Encoding | Template scope | Description |
+|-----|------|----------|---------------|-------------|
+| 2 | `gps_binary` | `[int16 lat×100][int16 lon×100]` = 4 bytes | Financial templates (BASE_TEMPLATE=001) | Compact GPS coordinates. Precision: ±0.01° ≈ ±1.1 km. May coexist with the UTF-8 `location` field (field_flags bit 3). |
+| 3 | *(preamble HKDF_KEY context)* | No data bytes — flag only | Security wrapper context (`#1pt/` records) | Signals that the HKDF_KEY bit in the preamble byte is set; key derivation uses HKDF domain separation rather than direct SHA-256 of template bytes. See `security-wrapper.md`. |
+
+### gps_binary encoding
+
+```
+[int16 lat_scaled]   2 bytes, big-endian — latitude  × 100, signed
+[int16 lon_scaled]   2 bytes, big-endian — longitude × 100, signed
+
+Range: ±327.67° — covers full globe (±90° latitude, ±180° longitude) ✓
+
+Examples:
+  51.5074° N, 0.1278° W (London):  lat=5150, lon=-12    → bytes 0x141E 0xFFF4
+  6.5244° N, 3.3792° E (Lagos):    lat=652,  lon=337    → bytes 0x028C 0x0151
+```
+
+Post-MVP upgrade path: `int32 × 1000` (8 bytes, ±111m precision) if sector use cases require it. This would require a new FLAGS bit or a new codebook char.
+
+### Cross-template bit stability
+
+Bits 2 and 3 of FLAGS4 are frozen as standard assignments. Template authors must not allocate `custom_fields` to bits 2 or 3. Bits 0–1 and 4–7 are available for template-specific allocation.

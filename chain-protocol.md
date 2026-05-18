@@ -299,3 +299,100 @@ URLs require decompression to access the frame. Storing frames means: read frame
 ### Why 8 sequence positions (3 bits)?
 
 Most job chains have 3–5 records: quote → booking → job → invoice → completion. 8 is sufficient for all practical chains. For chains that extend beyond 8 records, the sequence wraps — sequence=7 becomes a "chain continuation" State Commit that anchors a new chain with a new anchor. This keeps the chain reference compact while allowing unlimited chain length.
+
+---
+
+## 11. Agreement Chain Extension (SUI-018)
+
+**Status:** v0.2 addition — 2026-05-18  
+**Kaios source:** `dev_refs/FRAME-SPEC.md` §9–10; `draft_specs/AGREEMENTS-DESIGN.md`
+
+The chain protocol is the foundation for the agreement layer. This section documents how State Commit and Amendment records encode agreement state within a chain.
+
+### 11.1 State Commit Wire Format
+
+When `BASE_TEMPLATE=101` (State Commit), a `state_commit` byte follows the field_flags block:
+
+```
+[state_commit]    1 byte — present when BASE_TEMPLATE=101
+
+  bits 7-6: COMMIT_TYPE
+    00 = job close        (job finalised; balance outstanding)
+    01 = payment confirmed (settlement of a specific amount received/made)
+    10 = terms agreed     (bilateral acceptance of a quoted/proposed record)
+    11 = reserved         (disputes handled via Amendment + DISPUTE_FLAG, not here)
+
+  bits 5-4: PERIOD_TYPE   (meaningful for COMMIT_TYPE=10)
+    00 = calendar month   01 = tax week
+    10 = tax month        11 = custom (date_end field required)
+
+  bit 3: CHAIN_COMPLETE   1=all chained child records settled; no outstanding balance
+  bit 2: DISPUTE_FLAG     1=at least one chained record is in dispute / uncorrected
+  bits 1-0: reserved
+```
+
+**COMMIT_TYPE semantics:**
+
+| Code | Name | Meaning | Typical trigger |
+|------|------|---------|----------------|
+| 00 | Job close | Job is done; invoice issued or balance noted | Worker taps "Close job" |
+| 01 | Payment confirmed | Specific payment received or made | Worker records cash/transfer received |
+| 10 | Terms agreed | Both parties have accepted the offer/quote | Party B's acceptance reply |
+| 11 | Reserved | — | Not used; disputes use Amendment |
+
+### 11.2 Amendment Wire Format
+
+When `BASE_TEMPLATE=110` (Amendment), the frame omits `field_flags` and uses `changed_mask` bytes instead. An optional `amendment_flags` extension byte signals dispute and parent linkage:
+
+```
+[amendment_flags]   1 byte — present when flagged in changed_mask byte 2 bit 14
+
+  bit 7: HAS_PARENT_UID   1=8-byte parent_uid follows after changed masks
+  bit 6: DISPUTE_LINK     1=this amendment is a dispute record
+  bits 5-0: reserved
+```
+
+When `HAS_PARENT_UID=1`, an 8-byte parent identifier follows:
+```
+[parent_uid]        8 bytes — SHA-256(parent_frame_bytes)[0:8]
+```
+
+`parent_uid` is mandatory when writing to a Marker (`#1pm/`) or for financial amendments (BASE_TEMPLATE=110 + DOMAIN≥01). Optional for web-shared amendments where the `&c=` URL suffix is sufficient.
+
+### 11.3 Dispute Records
+
+A dispute is an Amendment record with `DISPUTE_LINK=1` + `HAS_PARENT_UID=1`. It links into the agreement trail via `parent_uid` without polluting the State Commit sequence.
+
+```
+Agreement chain with dispute:
+
+  [offer record, seq=0]
+  [acceptance State Commit COMMIT_TYPE=10, seq=1]  → Agreement RATIFIED
+  [dispute Amendment DISPUTE_LINK=1, seq=2]         → Agreement DISPUTED
+  [resolution State Commit COMMIT_TYPE=10, seq=3]   → Agreement RESOLVED
+```
+
+The shell displays a dispute badge on the parent record when a `DISPUTE_LINK` amendment is detected anywhere in the chain.
+
+### 11.4 C-TRIG in Chain Records
+
+Chain records may carry a C-TRIG block in the TRIG block position (meta2 bit 5, `HAS_TRIG_BLOCK=1`). The header byte's MODE bit (bit 5) distinguishes display TRIG (MODE=0) from commitment C-TRIG (MODE=1).
+
+A State Commit carrying C-TRIG encodes conditional release logic evaluated by the C-TRIG evaluator on receipt. See `ctrig-evaluator-spec.md` for the full instruction set.
+
+### 11.5 Agreement Chain Lifecycle
+
+```
+Offer record (ACK_REQUEST=1, CHAIN=0)
+  ↓ Party B replies
+State Commit (COMMIT_TYPE=10, CHAIN=1, &c=<offer_uid>)
+  ↓ Bilateral ratification detected
+RATIFIED — optional Marker write
+  ↓ Either party disputes
+Amendment (DISPUTE_LINK=1, HAS_PARENT_UID=1)
+  ↓ Server arbitration or off-protocol resolution
+State Commit (COMMIT_TYPE=10 or 00, CHAIN_COMPLETE=1)
+FULFILLED
+```
+
+See `agreements-spec.md` for the full agreement protocol and `markers-spec.md` for Marker integration.

@@ -1,6 +1,6 @@
 # Financial Block Specification
 
-**Status:** v0.1 — 2026-04-27
+**Status:** v0.2 — 2026-05-18 (SUI-005: fin_control BILLED/EXPENSE_CAT/PARITY added)
 **Decision source:** decisions.md R-PADS-005, R-PADS-009, R-PADS-010, R-PADS-011, R-PADS-012
 **Cross-references:** pads-v2-encoding-spec.md §6-8, transaction-classification.md
 **BitLedger alignment:** BitLedger_Protocol_v3.md N = A × 2^S + r value formula; Layer 2 scaling; rounding rules
@@ -122,6 +122,78 @@ Both qty and rate use the same DECIMAL_POS as the main amount. The decoder may d
 If `qty × rate ≠ customer_amount` due to rounding or discounts, the customer_amount is the authoritative total. The qty × rate breakdown is for transparency / audit, not recalculation.
 
 **Unit label:** Optional. When qty and rate represent non-standard units (not hours), a unit label may be carried in a free-text Details field rather than in the financial block. There is no unit string field in the financial block itself — encoders use the Details field for context.
+
+---
+
+## 6b. Financial Block Control Byte (fin_control)
+
+The first byte of every financial block is `fin_control`. It is always present when field_flags bit 12 is set.
+
+### DOMAIN=01 (simple mode — I>O perspective)
+
+```
+[fin_control]    1 byte — always present when financial block active
+
+  bit 7: BILLED         1=charge passed to customer (appears as invoice line item)
+                        Note: EXPENSE_CAT=00 forces BILLED=1 automatically.
+  bit 6: 0              must be 0 — mode indicator; integrity check 1
+  bit 5: QTY_TYPE       0=units/items  1=time/hours (display context for qty)
+  bit 4: PARITY         even parity of bits 7, 5, 3, 2, 1, 0 — integrity check 2
+  bits 3-2: EXPENSE_CAT 00=job charge (billed to customer; BILLED forced to 1)
+                        01=job cost (COGS, absorbed margin; not shown to customer)
+                        10=running cost (business overhead; no parent job)
+                        11=RESERVED (integrity check 3: must not appear)
+  bit 1: CUSTOMER_AMT   1=customer_amount uint24 follows
+  bit 0: WORKER_AMT     1=worker_amount uint24 follows
+```
+
+**Parity formula:**
+```
+PARITY = BILLED XOR QTY_TYPE XOR EXPENSE_CAT[1] XOR EXPENSE_CAT[0] XOR CUSTOMER_AMT XOR WORKER_AMT
+```
+
+**Four integrity checks (simple mode):**
+1. bit 6 = 0 (mode indicator; mismatch signals DOMAIN mismatch or corruption)
+2. bit 4 = PARITY (detects any single-bit flip across 6 content bits)
+3. EXPENSE_CAT ≠ 11 (reserved code; signals future-version record or corruption)
+4. QTY_TYPE=1 requires QTY_SPLIT=1 in transaction_byte (cross-field consistency)
+
+**EXPENSE_CAT semantics (for field service workers):**
+
+| Code | Category | BILLED | Visible to customer |
+|------|----------|--------|---------------------|
+| `00` | Job charge | Yes (forced) | Yes — appears on invoice |
+| `01` | Job cost (COGS) | No | No — internal margin tracking |
+| `10` | Running cost | No | No — business overhead, no specific job |
+
+**Examples (DECIMAL_POS=2):**
+```
+Payment received, £125.50:
+  fin_control = 0x12  (BILLED=0, bit6=0, QTY_TYPE=0, PARITY=1, EC=00, CUST=1, WORK=0)
+  customer_amount uint24 = 12550
+
+Expense paid, materials £45 (job cost):
+  fin_control = 0x06  (BILLED=0, bit6=0, QTY_TYPE=0, PARITY=0, EC=01, CUST=1, WORK=0)
+  Wait: PARITY = 0 XOR 0 XOR 0 XOR 1 XOR 1 XOR 0 = 0 → bit4=0
+  fin_control = 0b00000110 = 0x06
+
+Running cost, insurance £200:
+  EXPENSE_CAT=10, BILLED=0, CUSTOMER_AMT=1, WORKER_AMT=0
+  PARITY = 0 XOR 0 XOR 1 XOR 0 XOR 1 XOR 0 = 0 → bit4=0
+  fin_control = 0b00001010 = 0x0A
+```
+
+### DOMAIN=10 (standard mode — BitLedger Account Pair)
+
+```
+  bit 7: BILLED         1=charge passed to customer
+  bit 6: 1              must be 1 — mode indicator; integrity check
+  bits 5-2: ACCOUNT_PAIR  4-bit BitLedger Account Pair (0000–1101 active; 1110/1111 reserved)
+  bit 1: CUSTOMER_AMT   1=customer_amount uint24 follows
+  bit 0: WORKER_AMT     1=worker_amount uint24 follows
+```
+
+See `transaction-classification.md §3` for the Account Pair code table.
 
 ---
 

@@ -78,6 +78,7 @@ These documents are part of the standard and cover features in active implementa
 | [`ECOSYSTEM.md`](ECOSYSTEM.md) | Map of all repos, tools, and how they connect |
 | [`implementation-notes.md`](implementation-notes.md) | Pre-publication scan: deviations and innovations found in v0.1 implementations |
 | [`codec-sync.md`](codec-sync.md) | Protocol for keeping codec implementations in sync across products |
+| [`STANDARD-UPDATES.md`](STANDARD-UPDATES.md) | **Standard Update Register** — tracked list of all kaios design advances not yet reflected in this standard, with SUI IDs, source docs, and status. The authoritative to-do list for keeping this standard current. |
 
 ---
  cc

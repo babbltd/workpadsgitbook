@@ -1,6 +1,6 @@
 # Participants Block Specification
 
-**Status:** v0.1 — 2026-04-27
+**Status:** v0.2 — 2026-05-18 (SUI-003: 2-bit ROLE_TYPE, HAS_ALT_ID, extended codebook path)
 **Decision source:** decisions.md R-PADS-008
 **Cross-references:** pads-v2-encoding-spec.md §9, chain-protocol.md
 
@@ -43,28 +43,55 @@ for each participant (participant_count times):
 | Bit | Name | Meaning |
 |-----|------|---------|
 | 7 | IS_SENDER | This participant created the record |
-| 6 | ROLE_TYPE_2 | Role type bit 2 (MSB) |
-| 5 | ROLE_TYPE_1 | Role type bit 1 |
-| 4 | ROLE_TYPE_0 | Role type bit 0 (LSB) |
+| 6–5 | ROLE_TYPE | 2-bit quick-select (see §2.2) |
+| 4 | HAS_ALT_ID | alt_id block follows (for participants without a phone number) |
 | 3 | HAS_PHONE | Phone block follows name |
-| 2 | HAS_EMAIL | Email block follows (phone if present, else name) |
-| 1 | HAS_ROLE_TEXT | Role text block present |
-| 0 | reserved | |
+| 2 | HAS_EMAIL | Email block follows |
+| 1 | HAS_ROLE_TEXT / HAS_TRADING_NAME | When ROLE_TYPE=11: free-text role label. When ROLE_TYPE≠11: trading name (sole trader or org name) |
+| 0 | IS_ORG | 1=company/organisation; 0=individual |
 
-ROLE_TYPE = bits 6-4 as 3-bit value (0–7).
+ROLE_TYPE = bits 6–5 as 2-bit value.
 
-### 2.2 Role type codebook (codebook package `a`)
+### 2.2 Role type codebook — 2-bit quick-select
 
 | Code | Role | Description |
 |------|------|-------------|
-| 000 | Worker | General field worker |
-| 001 | Job owner / supervisor | The person responsible for the job, may not be on-site |
-| 010 | Subcontractor | Third-party doing specific work under this job |
-| 011 | Colleague | Lateral peer share, same organisation or trade network |
-| 100 | Site contact | On-site contact (customer-side, not sender) |
-| 101 | Referred by | Person who referred this job or customer |
-| 110 | Witness / verifier | Third party who can confirm work was done |
-| 111 | Extended | Role is described in role_text field |
+| `00` | Customer | Customer / client / recipient |
+| `01` | Worker | General field worker, sender's colleague, or self |
+| `10` | Supplier / Vendor | Third-party supplier, subcontractor, or service provider |
+| `11` | Extended | Role described via role_code byte or free-text role_text |
+
+**Extended role path (ROLE_TYPE=11):**
+- If `HAS_ROLE_TEXT=0`: a `role_code` byte (or 2 bytes for specialist roles) follows after phone/email fields. See §2.3.
+- If `HAS_ROLE_TEXT=1`: a `[uint16 len][UTF-8]` free-text role label follows. Use when no codebook code fits.
+
+### 2.3 Role code extended path
+
+When `ROLE_TYPE=11` and `HAS_ROLE_TEXT=0`:
+
+```
+[role_code]    1 byte (0x00–0xFE) — 240 named roles in 16 groups (see ROLE-CODEBOOK.md §3)
+               0xFF = escape → 1 additional byte (224 specialist roles; see ROLE-CODEBOOK.md §4)
+```
+
+Named roles include: Job owner/supervisor, Subcontractor, Colleague, Site contact, Referred by, Witness/verifier, and 230+ sector-specific roles. See `ROLE-CODEBOOK.md` for the complete codebook.
+
+### 2.4 alt_id block (HAS_ALT_ID=1)
+
+For participants without a phone number (common in low-connectivity markets):
+
+```
+[alt_id_type]   1 byte
+  0x01 = app_uid          device-generated UID, SIM-stable
+  0x02 = trade_name       business trading name
+  0x03 = national_id      government-issued ID number (opaque)
+  0x04 = location_label   contextual place reference ("Kigali market stall 7B")
+  0x05–0xFE = reserved
+
+[alt_id_value]  [uint8 len][UTF-8] — compact text, max 255 bytes
+```
+
+The `alt_id` block follows the phone/email/role_code/role_text fields for the participant.
 
 ---
 

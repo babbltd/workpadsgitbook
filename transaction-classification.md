@@ -1,6 +1,6 @@
 # Transaction Classification: I>O Notation and 8-State System
 
-**Status:** v0.1 — 2026-04-27
+**Status:** v0.2 — 2026-05-18 (SUI-008: Entry Type Matching Table, type-change rules, accounting display)
 **Decision source:** decisions.md R-PADS-006, R-PADS-007
 **Cross-references:** pads-v2-encoding-spec.md §7, financial-block.md
 **BitLedger alignment:** BitLedger_Protocol_v3.md §Layer 2, BitLedger_Universal_Domain.md
@@ -116,7 +116,37 @@ Each of the 8 primary states has 4 subtypes (2 bits). Codebook package `a` assig
 | 10 | Supplier order pending |
 | 11 | Future subcontractor cost |
 
-Remaining states (`I<O`, `I>O`, `O<I`, `O>I`) have subtypes reserved for codebook package `a`. Encoders use subtype=00 for all unless a specific subtype is warranted.
+**`I < O` (settled outgoing income — refund given) subtypes:**
+| Code | Meaning |
+|------|---------|
+| 00 | Full refund |
+| 01 | Partial refund |
+| 10 | Warranty / goodwill credit |
+| 11 | Overpayment return |
+
+**`I > O` (future outgoing income — credit note) subtypes:**
+| Code | Meaning |
+|------|---------|
+| 00 | Credit note |
+| 01 | Return authorisation |
+| 10 | Discount issued |
+| 11 | Credit balance applied |
+
+**`O < I` (settled expense recovery — reimbursed) subtypes:**
+| Code | Meaning |
+|------|---------|
+| 00 | General reimbursement |
+| 01 | Travel reimbursed |
+| 10 | Materials recovered |
+| 11 | Advance returned |
+
+**`O > I` (future expense recovery — reimbursement pending) subtypes:**
+| Code | Meaning |
+|------|---------|
+| 00 | Claim submitted |
+| 01 | Travel claim pending |
+| 10 | Materials claim pending |
+| 11 | Advance requested |
 
 ---
 
@@ -189,7 +219,99 @@ Labels are derived at decode time from the transaction byte. Future codebook pac
 
 ---
 
-## 8. Notes on Design
+## 8. Entry Type Matching Table (DOMAIN=11 Deterministic Mapping)
+
+When the entry type is known at creation time (from the wizard screen the worker used), every combination resolves deterministically to a single Account Pair code with no inference required. This table is used for DOMAIN=11 hybrid records.
+
+The `1110` Correction/Netting code is written only for API-generated records that bypass the wizard.
+
+### Income-side entry types
+
+| Wizard Entry Type | I>O State | Account Pair | AP_DIRECTION |
+|-------------------|-----------|--------------|--------------|
+| Invoice (send bill) | I>I | `0101` Op Income / Liability | 0 (debit receivable) |
+| Cash sale (paid now) | I<I | `0100` Op Income / Asset | 0 (debit cash) |
+| Payment received (settling invoice) | I<I | `0101` Op Income / Liability | 1 (credit receivable — clears it) |
+| Refund given | I<O | `0100` Op Income / Asset | 1 (credit cash out) |
+| Credit note issued | I>O | `0101` Op Income / Liability | 1 (credit receivable reversal) |
+| Quote / Estimate | I>I | `0101` Op Income / Liability | 0 (same as invoice; DRAFT=1) |
+
+### Expense-side entry types
+
+| Wizard Entry Type | I>O State | EXPENSE_CAT | Account Pair | AP_DIRECTION |
+|-------------------|-----------|-------------|--------------|--------------|
+| Running cost — cash paid | O<O | `10` | `0000` Op Expense / Asset | 0 |
+| Running cost — bill received | O>O | `10` | `0001` Op Expense / Liability | 0 |
+| Running cost — bill paid | O<O | `10` | `0001` Op Expense / Liability | 1 (clears payable) |
+| Job cost / COGS — cash paid | O<O | `01` | `0000` Op Expense / Asset | 0 |
+| Job cost / COGS — bill received | O>O | `01` | `0001` Op Expense / Liability | 0 |
+| Job charge — billed to customer | O<O | `00` | `0100` Op Income / Asset | 0 (COGS offset) |
+| Reimbursement given (advance) | O>I | — | `1001` Asset / Equity | 0 |
+| Reimbursement received | O<I | — | `1001` Asset / Equity | 1 |
+
+### Balance sheet entry types (post-MVP wizard)
+
+| Wizard Entry Type | I>O State | Account Pair | AP_DIRECTION |
+|-------------------|-----------|--------------|--------------|
+| Asset purchase — cash | O<O | `1011` Asset / Asset | 0 |
+| Asset purchase — on finance | O>O | `1000` Asset / Liability | 0 |
+| Loan repayment | O<O | `1000` Asset / Liability | 1 |
+| Owner contribution | I<I | `1001` Asset / Equity | 0 |
+| Owner draw / distribution | O<O | `1001` Asset / Equity | 1 |
+| Internal transfer | O<O | `1011` Asset / Asset | 0 |
+
+---
+
+## 9. Type-Change Reconciliation
+
+When a worker changes the entry type mid-creation, the app reconciles the frame encoding in cascade order:
+
+**Step 1 — Direction change (I↔O flip):**
+- Amounts preserved; DIRECTION bit in transaction_byte flips
+- EXPENSE_CAT resets to `10` (running cost) as the safe default when direction flips to O
+- Account Pair recalculates from new entry type
+
+**Step 2 — Settlement state change (Past↔Future, TIME bit):**
+- No field data changes — only TIME bit flips
+- Account Pair recalculates (e.g. `O<O` → `O>O` shifts Asset pair to Liability pair)
+
+**Step 3 — EXPENSE_CAT change (within O-direction):**
+- No field data changes; fin_control EXPENSE_CAT bits update
+- Account Pair recalculates (job charge ↔ COGS ↔ running cost have different pairs)
+- BILLED flag updates (EXPENSE_CAT=00 forces BILLED=1)
+
+**Invariant:** Worker-entered amounts are never silently discarded on direction changes. The amount is relabelled, not erased.
+
+---
+
+## 10. Accounting Detail Display
+
+When "Show accounting detail" is toggled on, plain-English labels are derived from `ACCOUNT_PAIR` + `AP_DIRECTION`:
+
+| Account Pair | AP_DIRECTION=0 | AP_DIRECTION=1 |
+|---|---|---|
+| `0000` Op Expense / Asset | Debit: Expenses / Credit: Cash | Debit: Cash / Credit: Expenses (reversal) |
+| `0001` Op Expense / Liability | Debit: Expenses / Credit: Payable | Debit: Payable / Credit: Expenses (payment) |
+| `0100` Op Income / Asset | Debit: Cash / Credit: Income | Debit: Income / Credit: Cash (refund) |
+| `0101` Op Income / Liability | Debit: Receivable / Credit: Income | Debit: Income / Credit: Receivable (credit note) |
+| `1000` Asset / Liability | Debit: Fixed Asset / Credit: Finance Liability | Debit: Finance Liability / Credit: Cash (repayment) |
+| `1001` Asset / Equity | Debit: Cash / Credit: Capital | Debit: Capital / Credit: Cash (distribution) |
+| `1011` Asset / Asset | Debit: Asset (dest) / Credit: Asset (src) | reverse |
+| `1110` Correction / Netting | "Unclassified — review needed" | — |
+
+**Display format in app:**
+```
+▼ Accounting detail
+  Type:    Operating Expense
+  Debit:   Expenses (Operating)
+  Credit:  Assets (Cash)
+```
+
+No Account Pair code numbers are shown to workers. Labels are derived from the pair's primary account category.
+
+---
+
+## 12. Notes on Design
 
 The I>O notation was developed during the pads-v1 design session from first principles, then cross-checked against BitLedger's 8-state accounting model and Universal Domain archetypes. The alignment is intentional but not mechanical — workpads uses the 8-state grid as a conceptual framework, not as a literal implementation of BitLedger Layer 2.
 

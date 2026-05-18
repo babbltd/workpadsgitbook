@@ -215,3 +215,30 @@ The Workpads app is the reader. The Standard is the syntax. The pages are alread
 | 3 | Gallery index format, Discover tab, `official` trust verification |
 | 4 | Schema C (components), cross-template composition, Schema P note presentations |
 | ∞ | Standard adoption by third-party apps and sites |
+
+---
+
+## Distribution Tiers (SUI-017)
+
+**Status:** v1.1 — 2026-05-18  
+**Kaios source:** `draft_specs/TEMPLATE-SYSTEM-DESIGN.md` §distribution
+
+Three tiers govern how templates reach devices. Each tier works independently; lower tiers are preferred where available.
+
+| Tier | Mechanism | Connectivity required | Use |
+|------|-----------|----------------------|-----|
+| **1 — Built-in** | Bundled in the app binary at install time | None — always available | System templates (Groups A–H in TEMPLATE-CATALOGUE.md): core record types, standard financial templates |
+| **2 — CDN** | `workpads.me/t/<sha256-hex>` — served from Cloudflare CDN; cached to IndexedDB after first fetch; `Cache-Control: immutable` | On first use only; zero cost after that | Custom and sector templates (Groups I–J): electrician, construction, medical, custom community templates |
+| **3 — Peer-to-peer** | Data Sync Bundle embeds the template payload inline in the share URL | None — template travels with the record | Offline / P2P contexts; first-time sector template distribution to receivers who have never been online with this template |
+
+**CDN provider:** Cloudflare (primary) — 24 African PoPs including Lagos, Nairobi, Accra, Johannesburg. Content-addressed URLs never change; infinite cache TTL.
+
+**Template not found fallback (all tiers exhausted):**
+1. Check IndexedDB by content hash → found: render immediately
+2. Not found: attempt CDN fetch (5s timeout on KaiOS)
+3. CDN unavailable: render in raw mode — canonical field names, no labels, no formula
+4. Display notice: "Template unavailable. Showing raw record."
+
+**No startup CDN calls.** The app never fetches templates at launch. Templates are fetched lazily, on first encounter with a record that needs them. Built-in templates cover all core use cases without any network dependency.
+
+**Template versioning:** content addressing means old records always reference the old hash, which the CDN retains indefinitely. No migration is ever required. The template registry maintains an index `{template_id → [hash_v1, hash_v2, ...]}` — all versions kept.
