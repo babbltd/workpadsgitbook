@@ -1,8 +1,11 @@
 # Implementation Notes — Pre-Publication Scan
 
-**Date:** 2026-04-28  
-**Scope:** workpadskaios v0.1, workpadsdotme (active)  
-**Purpose:** Record deviations, innovations, and gaps found in v0.1 implementations before the standard is published. Items here either feed a standard update, a deviation registration, or a v0.2 backlog entry.
+**Date:** 2026-04-28 (summary updated 2026-05-21)  
+**Scope:** workpadskaios, workpadsdotme, workpads-cli, workpads-codec  
+**Purpose:** Record deviations, innovations, and gaps found in implementations before or during standard publication.
+
+**Live deviation register:** [`workpadskaios/system/dev_daily/DEVIATIONS.md`](../workpadskaios/system/dev_daily/DEVIATIONS.md)  
+**Cross-repo process:** [`workpadskaios/system/project-process.md`](../workpadskaios/system/project-process.md)
 
 ---
 
@@ -10,7 +13,7 @@
 
 | ID | Repo | Type | Severity | Status |
 |----|------|------|----------|--------|
-| DEV-WP-URL-001 | workpadskaios | Deviation | **Breaking** | Needs fix in KaiOS v0.2 |
+| DEV-WP-URL-001 | workpadskaios | Deviation | **Breaking** | **Fixed** — pads-v1 `#1pa/` (2026-05-17) |
 | INN-WP-FIN-001 | workpadsdotme | Innovation | Additive | Forward design; pending §5 extension |
 | INN-WP-FIN-002 | workpadsdotme | Innovation | Additive | Helpers not yet in standard |
 | INN-WP-CHAIN-001 | workpadsdotme | Innovation | Additive | Consistent with chain-protocol.md |
@@ -24,27 +27,9 @@
 ### DEV-WP-URL-001 — URL Scheme Tag Mismatch
 
 **Repo:** workpadskaios  
-**Found in:** `js/lib/codec.js`  
-**Severity:** Breaking — prevents interop between KaiOS and web
+**Status:** **Resolved** (2026-05-17)
 
-**Description:**  
-workpadskaios v0.1 encodes URLs using a query-string scheme tag:
-```
-https://workpads.me/p?v=1&alg=bitpad-v1&d=<base64url>
-```
-
-The canonical format specified in §5 (`codec.md`) and implemented in workpadsdotme is a hash-fragment scheme tag:
-```
-https://workpads.me/p#1ag/<base64url>
-```
-
-A recipient who opens a KaiOS-generated URL in the workpadsdotme receiver (`/p`) will get a decode failure because:
-1. The `/p` receiver parses `window.location.hash`, not query parameters
-2. The scheme tag format differs; even with query-param parsing, `v=1&alg=bitpad-v1` is not the `1ag` tag
-
-**Resolution:** workpadskaios must update its codec to the canonical `#1ag/` format in v0.2. The standard does not need to change.
-
-**Compatibility note:** Records created by workpadskaios v0.1 are not shareable to workpadsdotme receivers or any future v0.1-spec implementation. Babb should provide a migration utility or transition note when KaiOS v0.2 ships.
+**Resolution:** KaiOS v0.2 emits pads-v1 `#1pa/` per `codec.md` v2.0. Legacy query and hash schemes remain decode-only in `js/lib/codec.js`. See kaios `DEVIATIONS.md` for full history.
 
 ---
 

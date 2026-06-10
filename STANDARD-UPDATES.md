@@ -64,6 +64,13 @@ Each row in the tables below is a **Standard Update Item (SUI)**. Items are grou
 | SUI-018 | `chain-protocol.md` | Document agreement chain extension: C-TRIG block in chain records, COMMIT_TYPE values (00=job close, 01=payment confirmed, 10=terms agreed), DISPUTE_FLAG, amendment chain convention. | `dev_refs/FRAME-SPEC.md` §9–10 | done |
 | SUI-019 | `codec-sync.md` | Update three-repo sync checklist for pads-v1 (`1pa` codebook). Replace `1eg/` / `1dg/` entries. | `dev_daily/CODEC-SYNC.md` | done |
 | SUI-020 | `record-schema.md` | Add FLAGS4 standard cross-template assignments: `gps_binary` (bit 2, financial template), preamble byte HKDF_KEY (bit 3). | `dev_refs/FRAME-SPEC.md` §14 | done |
+| SUI-021 | `codec.md` + tag dispatch | New scheme `#1pv/`: Path C record header (C1–C6), parser paths standard/shortcut/solo. Dual-decode with `#1pa/`. | `CODEC-V2-SCOPE-LOCKED.md`, Path C Full Adoption spec | done |
+| SUI-022 | `codec.md` | Record type byte 0 table incl. `need`/`offer`/`connection`; mandatory-group elision (C5) per type. | `CODEC-V2-SCOPE-LOCKED.md`, `PRODUCT-SURFACE-LOCKED.md` | done |
+| SUI-023 | `codec.md` | Flag byte + CRC-16-CCITT on `1pv/` frames (Doc 3 §8). | Doc 3, `CODEC-V2-SCOPE-LOCKED.md` | done |
+| SUI-024 | `codec-sync.md`, TAG-REFERENCE | Register `1pv/` in cross-repo sync and kaios tag dispatch. | `CODEC-V2-SCOPE-LOCKED.md` | done |
+| SUI-025 | `chain-protocol.md`, `codec.md` | `relationship` 4+4 on `chainRef` in `1pv/`; unknown → responds. | `CHAIN-EXECUTION-LOCKED.md`, Doc 8 §3 | done |
+| SUI-026 | `codec.md`, share spec | `changedMask` at share time; `_ratifiedFrame` outbound. | `CHAIN-EXECUTION-LOCKED.md`, Doc 8 §4.3 | done |
+| SUI-027 | `codec.md` / action-list annex | 16-bit `confirmed_mask` + `declined_mask` on ack records. | Doc 6 §8.2, `CHAIN-EXECUTION-LOCKED.md` | done |
 
 ---
 

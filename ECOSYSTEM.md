@@ -1,8 +1,10 @@
 # Workpads Ecosystem
 
-**Status:** v0.1 (2026-04-28)
+**Status:** v0.2 alignment (2026-05-21)
 
 This document maps the full Workpads ecosystem: every repository, its role, and how the pieces connect. It is descriptive, not normative — the spec sections govern.
+
+**Process:** [`workpadskaios/system/project-process.md`](../workpadskaios/system/project-process.md)
 
 ---
 
@@ -59,11 +61,11 @@ The codec package is the portable form of the pads-v1 encoder/decoder. It is the
 
 **Key facts:**
 - Algorithm: pads-v1
-- Compression: fflate DEFLATE (level 9)
+- Compression: fflate DEFLATE (level 9, `deflateSync`)
 - URL encoding: base64url, no padding
-- Scheme tag: `1ag` (1 = v1, a = codebook-a, g = general/DEFLATE)
-- Template byte: `0x01` (svc-basic)
-- Scalar fields: bits 0–8, 10–15 (15 fields); actions blob at bit 9
+- Scheme tag: `1pa/` (pads-v1 codebook `a`; supersedes `1ag/` / `1bg/` legacy)
+- Frame: meta1 + meta2 + field_flags (+ optional FLAGS3/FLAGS4)
+- Scalar fields: per `codec.md` v2.0; actions at bit 9 (newline-joined titles on wire)
 
 **Dependency graph:**
 ```
@@ -80,7 +82,7 @@ workpadsdotme       → inlines codec.js (browser bundle)
 
 The CLI is the earliest-stage Workpads implementation. It exposes the full §4 RecordService surface as shell commands: create, edit, share, import, render, list, export, delete, dashboard. It also implements template validation, storage policy management, and a browser service (local HTTP server with embedded UI).
 
-**Planned upgrade:** The CLI currently uses JSON + deflate-raw + base64url (pre-pads-v1 legacy encoding). v0.2 upgrades it to the canonical pads-v1 codec, making it interoperable with KaiOS and web URLs.
+**Encoding (v0.2+):** Share URLs use pads-v1 `#1pa/` via `@workpads/codec` (see `workpads-file-format.md` for `.wpf` binary). Legacy JSON share docs in older README sections are obsolete.
 
 **Use as a test harness:** Because the CLI exposes every RecordService method as a command, it is the simplest way to test round-trip encode/decode, template validation, and chain protocol interactions. Integration tests for the codec should be run against the CLI before a codec change is shipped.
 

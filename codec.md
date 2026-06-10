@@ -1,8 +1,8 @@
 # §5 — Codec & Compact Encoding
 
-**Status:** v2.0 (pads-v1 `1pa` codebook — 2026-05-18)  
-**Replaces:** v1.2 (codebook-b `1bg/` — superseded)  
-**Algorithm:** pads-v1, codebook package a  
+**Status:** v2.2 (pads-v1 `1pa` + pads-v2 `1pv` native G0–G6 — 2026-05-24)  
+**Replaces:** v2.1 (bridge-only `1pv`)  
+**Algorithm:** pads-v1 codebook `a`; pads-v2 codebook `v` (Path C + native groups)  
 **Compression:** fflate deflateSync (DEFLATE, RFC 1951)  
 **URL encoding:** base64url (no padding)  
 **Cross-references:** financial-block.md, participants-block.md, transaction-classification.md  
@@ -61,6 +61,7 @@ Records with sensitive content use security-tagged variants. The scheme tag posi
 | Tag | Security level |
 |-----|---------------|
 | `#1pa/` | Plain record (no encryption) |
+| `#1pv/` | pads-v2 Path C record (see §5.2) — **preferred encode** when supported |
 | `#1ps/` | Full scramble (AES-CTR + field scramble) |
 | `#1ph/` | Partial scramble (header clear, data encrypted) |
 | `#1pt/` | Template-keyed encryption |
@@ -466,11 +467,188 @@ The move to uint24 saves ~5 bytes per amount field and removes variable-length s
 
 ---
 
+## pads-v2 (`#1pv/`) — Path C + native groups (v0.4)
+
+**SUI:** 021–027 (2026-05-24). **Kaios reference:** `pathc-v2.js`, `pathc-native.js`, `native-v1-split.js`, `FRAME-SPEC-1pv-ADDENDUM.md`. **Default wire:** native G0–G6 group chunks (phase 2b). Legacy bridge v1 (flag bit 0x01) decode-only.
+
+### URL
+
+```
+https://workpads.me/p#1pv/<base64url-deflated-inner-frame>[&c=<chainRef>][&r=<ratified>]
+```
+
+Same deflate + base64url pipeline as `1pa/`. Dual-decode: all clients **must** decode both `1pa/` and `1pv/`. Encoders **should** default to `1pv/` when Path C is supported.
+
+### Scheme tag
+
+| Position | Char | Meaning |
+|----------|------|---------|
+| 0 | `1` | pads format generation 1 |
+| 1 | `p` | pads family |
+| 2 | `v` | codebook v — Path C header + bridge |
+
+### Inner frame (after deflate) — native default (v0.4 phase 2b)
+
+```
+[flag_byte]
+[path_c_header]     ; 2 bytes (shortcut) or 3 bytes (standard)
+[presence u8]        ; bits 0–6 = G0–G6 present
+[u8 hdr_len][meta prefix]?   ; if flag bit 5 (0x20) HAS_HDR — legacy meta1/meta2 during migration
+[u16_le chunk][group_body]  ; emit order: G1, G0, G2, G3, G4, G5, G6
+[trail?]             ; relationship / ack_masks / v4 ext
+[crc16_le?]          ; if flag bit 7 (0x80)
+```
+
+Each **group_body** carries that group’s **subset of field_flags + FLAGS3/4 + field payloads** (not a full monolithic v1 frame). Decoder merges groups to pads-v1 field stream for field parsing. See **§5.3**.
+
+#### flag_byte (native)
+
+| Bit | Name | Meaning |
+|-----|------|---------|
+| 0 | BRIDGE_V1 | **Legacy:** uint16 v1 embed follows (v0.3 only) |
+| 1 | _(reserved)_ | |
+| 2 | _(trail)_ | See trail_flags below |
+| 4 | GROUP_LOCAL | Each group body prefixed with `u8 group_local_flags` (phase 3) |
+| 5 | HAS_HDR | Length-prefixed meta1/meta2 prefix before groups |
+| 6 | HAS_TRAIL | Trail block before CRC |
+| 7 | HAS_CRC | CRC-16-CCITT LE over all preceding bytes |
+
+**group_local_flags:** bit0 = programmable rules (G6); bit1 = informational_ack (G0); bit2 = display schema (G6). **Light ack wire:** `relationship: acknowledges` + `confirmed_mask=0` + `declined_mask=0`.
+
+**Trail** (when HAS_TRAIL): `trail_flags` u8 — bit1 relationship, bit2 ack_masks (4 bytes), bit3 v4 ext.
+
+#### Legacy bridge v1 (flag bit 0 set)
+
+```
+[flag_byte]  ; bit 0 = 1
+[path_c_header]
+[u16_le v1_length]
+[pads-v1 frame]
+[relationship?] [ack_masks?] [crc16?]
+```
+
+Dual-decode required indefinitely.
+
+CRC algorithm: CRC-16-CCITT (poly 0x1021), init 0xFFFF, reflected per byte — same as `pathc-v2.js`.
+
+#### Path C header — standard path (3 bytes)
+
+| Byte | Content |
+|------|---------|
+| 0 | `record_type` byte (see table below) |
+| 1 | bit0 priority; bits 4–6 `chain_mode` on invoice/quote only |
+| 2 | D-byte: draft (bit 2), ack_request (bit 4), restrict_forward (bit 5) |
+
+`chain_mode` (3 bits): 0 INITIATING, 1 LIVE, 2 INFORMATIONAL, 3 CLOSING, 4 DISPUTING, 5 WITNESSING.
+
+#### Path C header — shortcut path (2 bytes)
+
+Byte 0 = `0x00`; byte 1 = `(type_nibble << 4) | d_bits` for compact invoice/work_record/note/log/payment when no `chain_mode` override.
+
+#### record_type byte 0 (v0.3)
+
+| Type | Byte |
+|------|------|
+| invoice | 0x01 |
+| quote | 0x02 |
+| work_record | 0x03 |
+| payment | 0x07 |
+| need | 0x16 |
+| offer | 0x17 |
+| connection | 0x18 |
+| job (default) | 0x21 |
+
+Full table in `pathc-v2.js` `TYPE_TO_BYTE`.
+
+#### relationship byte (bridge extension)
+
+4-bit core + 4-bit subtype (Doc 8). Unknown core values (>7) decode as `responds` with `_relationshipUnknown: true`.
+
+| Core | Name |
+|------|------|
+| 0 | creates |
+| 1 | amends |
+| 2 | acknowledges |
+| 3 | pays |
+| 4 | disputes |
+| 5 | reverses |
+| 6 | responds |
+| 7 | confirms |
+
+Encoders may set `relationship` explicitly or rely on inference from `record_type` (e.g. `payment` → `pays`, `ack` → `acknowledges`).
+
+#### Ack masks (bridge extension)
+
+On `relationship: acknowledges`:
+
+| Field | Width |
+|-------|-------|
+| confirmed_mask | uint16 LE |
+| declined_mask | uint16 LE |
+
+Up to **16** indexed actions (Doc 6 §8.2). Connection light ack: `acknowledges` with both masks zero.
+
+#### Share-time behaviour (unchanged wire, v1 + URL suffix)
+
+| Feature | Behaviour |
+|---------|-----------|
+| `changedMask` | Amendment sparse payload — `baseTemplate` 6, derived at share from field diff |
+| `_ratifiedFrame` | State commit: `&r=<deflated-ratified-frame>` URL suffix |
+| `chainRef` | `&c=<4-char ref>` when meta1 CHAIN=1 |
+
+These apply to `1pa/` and `1pv/` equally; Path C adds header-level `chain_mode` and bridge-level `relationship`.
+
+### 5.3 Native groups (G0–G6)
+
+After Path C header, parser reads **`presence`** (1 byte; bits 0–6 = G0–G6). Each set bit is followed by **`u16_le` length** and group body bytes. Emit order on wire: **G1, G0, G2, G3, G4, G5, G6**. Optional **`HAS_HDR` (0x20)** length-prefixed meta1/meta2 before chunks during migration.
+
+| Gn | Name | Role |
+|----|------|------|
+| G0 | Identity | job, customer, worker, ref, uid, context |
+| G1 | Financial | setup_byte, financial block |
+| G2 | Time & place | date, location, times, due_date |
+| G3 | References | tags, attachment, url, service_ref |
+| G4 | Work content | actions, details |
+| G5 | Narrative & parties | story, participants block |
+| G6 | Chain & extensions | TRIG, display_schema, programmable_rules (`0x50`) |
+
+**Group body (phase 2b):** per-group subset of `field_flags` + optional FLAGS3/4 + field payloads for that group only. Encoders MUST NOT place non-G0 field payloads only inside G0.
+
+**Mandatory groups** (implied by record type; presence bit required; zero-length chunk allowed):
+
+| Type | Mandatory |
+|------|-----------|
+| invoice, quote, receipt, credit_note | G0, G1, G6 |
+| work_record, task, need, offer, job | G0, G4 |
+| note, log, broadcast, report, connection | G0, G5 |
+| payment, expense, state_commit | G0, G1 |
+| schedule | G0, G2 |
+| template | G0, G6 |
+| contact | G0 |
+| contract | G0, G4, G6 |
+| order | G0, G1, G4 |
+| ack | G0, G6 |
+
+Full matrix: [`native-groups-mandatory.json`](native-groups-mandatory.json). Field→group bit map: `workpadskaios/system/dev_refs/NATIVE-GROUPS-TABLE.md` §4.
+
+**Trail** (after groups, flag `HAS_TRAIL`): `trail_flags` — bit1 relationship, bit2 ack_masks (4 bytes), bit3 v4_ext.
+
+**Legacy bridge v1:** flag bit 0 — full pads-v1 embed; decode indefinitely; encode opt-in only.
+
+### Conformance vectors
+
+`test/fixtures/1pv-vectors.json` — version `1pv-native-2b`, eight scenarios (invoice, ack, payment, schedule, work_record, note, need, job). Mirrored in `workpadskaios/test/fixtures/`. Regenerate: `node scripts/regen-1pv-vectors.js` (kaios).
+
+---
+
 ## Implementations
 
 | Implementation | Location | Environment |
 |----------------|----------|-------------|
 | Browser codec | `workpadskaios/js/lib/codec.js` — `window.WPCodec` | Browser (fflate UMD) |
+| Path C bridge | `workpadskaios/js/lib/pathc-v2.js` — `window.WPPathC` | Browser — load before codec.js |
+| Native groups | `native-v1-split.js`, `pathc-native.js`, `native-groups-table.js` | Same load order as pathc |
+| npm package | `workpads-codec` — `encode({ padsV2: true })` native default | Node / CLI |
 | Anonymous mode helpers | `workpadskaios/js/lib/anon.js` — `window.WPAnon` | Browser |
 | Security wrapper | `workpadskaios/js/lib/security.js` | Browser |
 
@@ -507,6 +685,7 @@ This codec is registered as:
 
 ```
 pads-v1 / codebook package a / 1pa
+pads-v2 / codebook package v / 1pv   (Path C header + native G0–G6 — v0.4)
 ```
 
-**Kaios source authority:** `system/dev_refs/FRAME-SPEC.md` v1.0 (2026-05-17) is the wire format authority. This standard document is derived from FRAME-SPEC v1.0 for external implementors. On any conflict between this document and FRAME-SPEC v1.0, FRAME-SPEC v1.0 is authoritative.
+**Kaios source authority:** `FRAME-SPEC.md` v1.0 for `1pa/` field blocks; `FRAME-SPEC-1pv-ADDENDUM.md` for `1pv/` header and bridge. On conflict, kaios `dev_refs` wins until merged into this standard.

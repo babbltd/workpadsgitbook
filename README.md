@@ -1,9 +1,11 @@
 # Workpads Standard
 
-**Version:** v0.1 (2026-04-27)  
+**Version:** v0.1 (2026-04-27); **codec §5:** pads-v1 v2.0 (`#1pa/`)  
 **Maintained by:** [Babb](https://babb.tel)  
 **BASICS conformance:** Core tier, BASICS v0.1.1  
 **License:** Open standard — see [Conformance and Use](#conformance-and-use)
+
+**Cross-repo process:** [`workpadskaios/system/project-process.md`](../workpadskaios/system/project-process.md)
 
 ---
 
@@ -25,7 +27,7 @@ Babb builds reference implementations — KaiOS, web, CLI — to prove the stand
 
 **The standard is designed to be implemented by anyone, for any purpose.** Experimental apps, open-source tools, proprietary products, and platform-specific derivatives are all welcome. The standard defines what a workpad record is and how it is encoded; what you build with that is yours.
 
-What Babb asks in return is simple: if your product generates or decodes workpad URLs (`workpads.me/p#1ag/...`), it should decode correctly the records it receives, and encode records that any conformant decoder can read. Interoperability is the standard's core value — not exclusivity.
+What Babb asks in return is simple: if your product generates or decodes workpad URLs (`workpads.me/p#1pa/...`), it should decode correctly the records it receives, and encode records that any conformant decoder can read. Interoperability is the standard's core value — not exclusivity.
 
 **BASICS Standard is the benchmark.** The Workpads Standard is a BASICS-conformant product standard. BASICS provides the meta-framework: naming conventions, conformance claims, deviation registration, compatibility policy. If you are building on Workpads, conforming to BASICS gives your product a recognised conformance tier and a path for formally registering deviations rather than silently breaking compatibility.
 

@@ -1,6 +1,6 @@
 # Chain Protocol Specification
 
-**Status:** v0.1 — 2026-04-27
+**Status:** v0.2 — 2026-05-24 (adds `1pv/` relationship byte — SUI-025)
 **Decision source:** decisions.md R-PADS-012, R-PADS-013, R-PADS-014, R-PADS-015, R-PADS-016, R-PADS-019
 **Cross-references:** pads-v2-encoding-spec.md §8, §11, §12, participants-block.md, transaction-classification.md
 
@@ -85,6 +85,30 @@ var chainRef = dataEnd !== -1 ? hash.slice(dataEnd + 3) : null;
 ```
 
 If chainRef is present, decode 4 base64url chars → 3 bytes → extract ANCHOR (17 bits), PARTICIPANT_SLOT (4 bits), SEQUENCE (3 bits).
+
+### 3.1 Relationship on `#1pv/` (SUI-025)
+
+For pads-v2 URLs, semantic link type is carried in the **bridge extension** after the embedded pads-v1 frame (flag bit `0x02`). This is separate from:
+
+- **`chain_mode`** — 3 bits in Path C header byte 1 (invoice/quote lifecycle)
+- **`&c=` chainRef** — 24-bit anchor in the URL suffix (unchanged from §3)
+
+| Core (4-bit) | Relationship |
+|--------------|--------------|
+| 0 | creates |
+| 1 | amends |
+| 2 | acknowledges |
+| 3 | pays |
+| 4 | disputes |
+| 5 | reverses |
+| 6 | responds |
+| 7 | confirms |
+
+Wire: `(subtype << 4) | core` — one byte. Unknown core (>7) decodes as `responds` with UI flag.
+
+**Ack records** (`acknowledges`): bridge flag `0x04` adds `confirmed_mask` and `declined_mask` (uint16 LE each). Max 16 indexed actions (Doc 6 §8.2).
+
+**Amendments / ratification:** `changedMask` remains in the pads-v1 amendment frame; `_ratifiedFrame` remains `&r=` URL suffix — see `codec.md` §5.2.
 
 ---
 

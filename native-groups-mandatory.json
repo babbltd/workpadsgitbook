@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "updated": "2026-05-24",
+  "groups": {
+    "G0": { "id": 0, "name": "identity" },
+    "G1": { "id": 1, "name": "financial" },
+    "G2": { "id": 2, "name": "time_place" },
+    "G3": { "id": 3, "name": "references" },
+    "G4": { "id": 4, "name": "work_content" },
+    "G5": { "id": 5, "name": "narrative_parties" },
+    "G6": { "id": 6, "name": "chain_extensions" }
+  },
+  "mandatory": {
+    "invoice":     [0, 1, 6],
+    "quote":       [0, 1, 6],
+    "work_record": [0, 4],
+    "task":        [0, 4],
+    "note":        [0, 5],
+    "log":         [0, 5],
+    "payment":     [0, 1],
+    "schedule":    [0, 2],
+    "broadcast":   [0, 5],
+    "receipt":     [0, 1, 6],
+    "contract":    [0, 4, 6],
+    "order":       [0, 1, 4],
+    "credit_note": [0, 1, 6],
+    "report":      [0, 5],
+    "template":    [0, 6],
+    "need":        [0, 4],
+    "offer":       [0, 4],
+    "connection":  [0, 5],
+    "contact":     [0],
+    "job":         [0, 4],
+    "expense":     [0, 1],
+    "amendment":   [0],
+    "state_commit":[0, 1],
+    "ack":         [0, 6],
+    "default":     [0, 6]
+  },
+  "type_byte": {
+    "invoice": 1, "quote": 2, "work_record": 3, "task": 4, "note": 5, "log": 6,
+    "payment": 7, "schedule": 8, "broadcast": 9, "receipt": 10, "contract": 11,
+    "order": 12, "credit_note": 13, "report": 14, "template": 15,
+    "need": 22, "offer": 23, "connection": 24, "contact": 32, "job": 33, "expense": 34
+  },
+  "shortcut_nibble": {
+    "invoice": 1, "work_record": 3, "note": 4, "log": 5, "payment": 6,
+    "need": 14, "offer": 15
+  }
+}

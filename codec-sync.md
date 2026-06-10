@@ -1,6 +1,6 @@
 # Codec Sync Protocol
 
-**Status:** v1.1 (2026-05-18) — updated for pads-v1 (`1pa` codebook); SUI-019  
+**Status:** v1.2 (2026-05-24) — pads-v1 (`1pa`) + pads-v2 (`1pv`); SUI-019, SUI-024  
 **Source:** Adapted from workpadsdotme/system/SYNC.md  
 **Applies to:** All Workpads implementations that inline or bundle the pads-v1 codec
 
@@ -42,12 +42,20 @@ var SCHEME = /^(?:https?:\/\/workpads\.me\/p[/?]?)?#?1pa\//;
 var SCHEME_LEGACY = /^(?:https?:\/\/workpads\.me\/p[/?]?)?#?(1ag|1bg)\//;
 ```
 
-Active codebook: `1pa` — pads-v1, package a. Supersedes `1ag/` (codebook a, pre-financial) and `1bg/` (codebook b, financial block with fin_flags).
+Active codebooks:
+- **`1pa`** — pads-v1, package `a` (field frame authority)
+- **`1pv`** — pads-v2, package `v` (Path C + native G0–G6 — encode default v0.4)
 
-Routing by scheme tag char[1]:
-- `'a'` → legacy decoder (codebook a, `1ag/`)
-- `'b'` → legacy decoder (codebook b, `1bg/`)  
-- `'p'` → pads-v1 decoder (current, `1pa/`)
+Supersedes `1ag/` and `1bg/` for new shares.
+
+Routing:
+```js
+if (hash.startsWith('1pv/')) decodePadsV2();  // unwrapNative or legacy bridge → merge groups → parseFrame(v1)
+else if (hash.startsWith('1pa/')) decodePadsV1();
+else route by hash[1]: 'a' legacy A, 'b' legacy B, 'p' pads-v1 family
+```
+
+**Sync files for `1pv/`:** `pathc-v2.js`, `native-groups-table.js`, `native-v1-split.js`, `pathc-native.js`, `codec.js` in both `workpads-codec` and `workpadskaios`. Vectors: `test/fixtures/1pv-vectors.json` (`1pv-native-2b`).
 
 If the scheme tag changes (new codebook char), update this regex in every copy simultaneously. A mismatch here causes complete decode failure — no partial degradation.
 
